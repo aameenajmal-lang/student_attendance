@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Attendance System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* Gray-900 */
+            color: #d1d5db; /* Gray-300 */
+        }
+        .main-card {
+            background-color: #1f2937; /* Gray-800 */
+            border: 1px solid #374151; /* Gray-700 */
+        }
+        .btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .btn-primary { background-color: #3b82f6; }
+        .btn-primary:hover { background-color: #2563eb; }
+        .btn-secondary { background-color: #4b5563; }
+        .btn-secondary:hover { background-color: #6b7280; }
+        .btn-present { background-color: #16a34a; color: white; }
+        .btn-absent { background-color: #dc2626; color: white; }
+
+        .student-card {
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .student-card.present {
+            background-color: #1f2937;
+            border-color: #16a34a;
+        }
+        .student-card.absent {
+            background-color: #1f2937;
+            border-color: #dc2626;
+        }
+        .student-card.present .status-indicator,
+        .student-card.absent .status-indicator {
+            opacity: 1;
+        }
+        .student-card.present .status-indicator {
+             color: #16a34a;
+        }
+        .student-card.absent .status-indicator {
+            color: #dc2626;
+        }
+        .status-indicator {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .roster-scroll::-webkit-scrollbar { width: 8px; }
+        .roster-scroll::-webkit-scrollbar-track { background: #111827; }
+        .roster-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="container mx-auto max-w-7xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-white">Teacher's Attendance Portal</h1>
+            <p class="text-gray-400 mt-2">Upload a student list and mark today's attendance.</p>
+        </header>
+
+        <!-- Controls -->
+        <div class="main-card p-4 rounded-xl mb-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <input type="file" id="csv-upload" class="hidden" accept=".csv">
+                <button id="upload-btn" class="btn btn-primary text-white font-bold py-2 px-4 rounded-lg">Upload Student List (.csv)</button>
+                <p id="file-name" class="text-sm text-gray-400">No file chosen</p>
+            </div>
+            <div class="flex items-center gap-4">
+                 <p id="summary" class="text-sm font-medium text-gray-300"></p>
+                <button id="export-btn" class="btn btn-secondary text-white font-bold py-2 px-4 rounded-lg" disabled>Export Today's Log</button>
+            </div>
+        </div>
+
+        <!-- Student Roster -->
+        <main id="roster-container" class="roster-scroll main-card p-6 rounded-2xl overflow-y-auto h-[65vh]">
+            <div id="roster-placeholder" class="text-center text-gray-500">
+                <p class="text-lg">Please upload a student list to begin.</p>
+                <p class="text-sm mt-2">The CSV file should contain columns for a student ID and name.</p>
+            </div>
+            <!-- Student cards will be dynamically inserted here -->
+        </main>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const uploadBtn = document.getElementById('upload-btn');
+    const csvUpload = document.getElementById('csv-upload');
+    const fileNameEl = document.getElementById('file-name');
+    const exportBtn = document.getElementById('export-btn');
+    const rosterContainer = document.getElementById('roster-container');
+    const rosterPlaceholder = document.getElementById('roster-placeholder');
+    const summaryEl = document.getElementById('summary');
+
+    let students = []; // { id, name, photoUrl, status: 'unmarked' | 'present' | 'absent' }
+    const today = new Date().toLocaleDateString();
+
+    const renderRoster = () => {
+        rosterContainer.innerHTML = ''; // Clear existing content
+        if (students.length === 0) {
+            rosterContainer.appendChild(rosterPlaceholder);
+            return;
+        }
+
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4';
+        
+        students.forEach(student => {
+            const card = document.createElement('div');
+            card.className = `student-card bg-gray-900 p-4 rounded-lg flex items-center gap-4 ${student.status}`;
+            card.dataset.id = student.id;
+
+            const photoSrc = student.photoUrl || `https://placehold.co/64x64/374151/FFFFFF?text=${student.name.charAt(0)}`;
+            const isMarked = student.status !== 'unmarked';
+
+            card.innerHTML = `
+                <img src="${photoSrc}" alt="${student.name}" class="w-16 h-16 rounded-full object-cover flex-shrink-0" onerror="this.onerror=null;this.src='https://placehold.co/64x64/374151/FFFFFF?text=${student.name.charAt(0)}';">
+                <div class="flex-grow overflow-hidden">
+                    <p class="font-bold text-white truncate">${student.name}</p>
+                    <p class="text-sm text-gray-400">ID: ${student.id}</p>
+                    <div class="flex items-center gap-2 mt-2">
+                        <button class="btn-present text-xs py-1 px-2 rounded-md ${isMarked ? 'opacity-50 cursor-not-allowed' : ''}" ${isMarked ? 'disabled' : ''} data-action="present">Present</button>
+                        <button class="btn-absent text-xs py-1 px-2 rounded-md ${isMarked ? 'opacity-50 cursor-not-allowed' : ''}" ${isMarked ? 'disabled' : ''} data-action="absent">Absent</button>
+                    </div>
+                </div>
+                <div class="status-indicator text-2xl font-bold pr-2">
+                    ${student.status === 'present' ? 'P' : student.status === 'absent' ? 'A' : ''}
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+        rosterContainer.appendChild(grid);
+        updateSummary();
+    };
+    
+    const updateSummary = () => {
+        const total = students.length;
+        if (total === 0) {
+            summaryEl.textContent = '';
+            exportBtn.disabled = true;
+            return;
+        }
+        const present = students.filter(s => s.status === 'present').length;
+        const absent = students.filter(s => s.status === 'absent').length;
+        const marked = present + absent;
+        summaryEl.textContent = `Marked: ${marked}/${total} (Present: ${present}, Absent: ${absent})`;
+        exportBtn.disabled = marked === 0;
+    };
+
+    const handleFileUpload = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        fileNameEl.textContent = file.name;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target.result;
+            try {
+                const parsedStudents = parseCSV(text);
+                const savedData = loadAttendance();
+                if (savedData.rosterId === file.name) {
+                     students = parsedStudents.map(s => {
+                        const savedStudent = savedData.log.find(ss => ss.id === s.id);
+                        return savedStudent || { ...s, status: 'unmarked' };
+                    });
+                } else {
+                    students = parsedStudents.map(s => ({ ...s, status: 'unmarked' }));
+                }
+                saveRosterId(file.name);
+                renderRoster();
+            } catch (error) {
+                alert(`Error parsing CSV: ${error.message}`);
+                fileNameEl.textContent = "Failed to load.";
+            }
+        };
+        reader.readAsText(file);
+    };
+    
+    const parseCSV = (text) => {
+        const lines = text.trim().split('\n');
+        // Normalize headers: trim, lowercase, remove spaces
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s/g, ''));
+
+        // Flexibly find the index for ID and Name columns
+        const idIndex = headers.findIndex(h => h.includes('id'));
+        const nameIndex = headers.findIndex(h => h.includes('name'));
+        const photoUrlIndex = headers.findIndex(h => h.includes('photourl'));
+
+        if (idIndex === -1 || nameIndex === -1) {
+            throw new Error('CSV must include columns that can be identified as a student ID and a name.');
+        }
+
+        return lines.slice(1).map(line => {
+            const values = line.split(',').map(v => v.trim());
+            // Build a standardized student object
+            const student = {
+                id: values[idIndex],
+                name: values[nameIndex],
+                photoUrl: photoUrlIndex !== -1 ? values[photoUrlIndex] : null
+            };
+            return student;
+        }).filter(s => s.id && s.name); // Filter out any empty or invalid rows
+    };
+
+    const markAttendance = (studentId, status) => {
+        const student = students.find(s => s.id === studentId);
+        if (student && student.status === 'unmarked') {
+            student.status = status;
+            saveAttendance();
+            renderRoster(); // Re-render to update the UI
+        }
+    };
+    
+    // --- Local Storage ---
+    const getStorageKey = () => `attendance_${today}`;
+    
+    const saveRosterId = (rosterId) => {
+        const data = loadAttendance();
+        data.rosterId = rosterId;
+        localStorage.setItem(getStorageKey(), JSON.stringify(data));
+    };
+
+    const saveAttendance = () => {
+        const currentData = loadAttendance();
+        currentData.log = students;
+        localStorage.setItem(getStorageKey(), JSON.stringify(currentData));
+    };
+
+    const loadAttendance = () => {
+        const saved = localStorage.getItem(getStorageKey());
+        if (saved) {
+            return JSON.parse(saved);
+        }
+        return { rosterId: null, log: [] }; // Default structure
+    };
+    
+    // --- Event Listeners ---
+    uploadBtn.addEventListener('click', () => csvUpload.click());
+    csvUpload.addEventListener('change', handleFileUpload);
+    
+    rosterContainer.addEventListener('click', (e) => {
+        const button = e.target.closest('button[data-action]');
+        if (button) {
+            const action = button.dataset.action;
+            const card = button.closest('.student-card');
+            const studentId = card.dataset.id;
+            markAttendance(studentId, action);
+        }
+    });
+    
+    exportBtn.addEventListener('click', () => {
+        if (students.length === 0) return;
+        const markedStudents = students.filter(s => s.status !== 'unmarked');
+        if (markedStudents.length === 0) {
+            alert("No attendance has been marked yet.");
+            return;
+        }
+        let csvContent = "data:text/csv;charset=utf-8,id,name,status,timestamp\n";
+        markedStudents.forEach(s => {
+            const row = [s.id, s.name, s.status, new Date().toLocaleTimeString()].join(',');
+            csvContent += row + "\r\n";
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `attendance_${today.replaceAll('/','-')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+
+});
+</script>
+
+</body>
+</html>
+
